@@ -13,112 +13,98 @@
  *   - $ GITHUB_AUTH_TOKEN="..." git filter-branch -f --msg-filter "node update-commit-message.js" 2364096862b72cf4d801ef2008c54252335a2df9..HEAD
  */
 
-const {Octokit, App} = require('octokit');
+const { Octokit } = require('octokit');
 const fs = require('fs');
 
 const OWNER = 'facebook';
 const REPO = 'react-forget';
-const octokit = new Octokit({auth: process.env.GITHUB_AUTH_TOKEN});
+const octokit = new Octokit({ auth: process.env.GITHUB_AUTH_TOKEN });
 
-const fetchPullRequest = async pullNumber => {
-  const response = await octokit.request(
-    'GET /repos/{owner}/{repo}/pulls/{pull_number}',
-    {
+if (!process.env.GITHUB_AUTH_TOKEN) {
+  console.error("Error: GITHUB_AUTH_TOKEN environment variable is not set.");
+  process.exit(1);
+}
+
+async function fetchPullRequest(pullNumber) {
+  try {
+    const response = await octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}', {
       owner: OWNER,
       repo: REPO,
       pull_number: pullNumber,
-      headers: {
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    }
-  );
-  return {body: response.data.body, title: response.data.title};
-};
+      headers: { 'X-GitHub-Api-Version': '2022-11-28' },
+    });
+    return { body: response.data.body, title: response.data.title };
+  } catch (e) {
+    console.error("Error fetching pull request:", e);
+    return null;
+  }
+}
 
 function formatCommitMessage(str) {
-  let formattedStr = '';
+  const trimmedStr = str.replace(/(\r\n|\n|\r)/gm, ' ').trim();
+  if (!trimmedStr) return '';
+
+  const words = trimmedStr.split(' ');
   let line = '';
-
-  const trim = str.replace(/(\r\n|\n|\r)/gm, ' ').trim();
-  if (!trim) {
-    return '';
-  }
-
-  // Split the string into words
-  const words = trim.split(' ');
-  // Iterate over each word
-  for (let i = 0; i < words.length; i++) {
-    // If adding the next word doesn't exceed the line length limit, add it to the line
-    if ((line + words[i]).length <= 80) {
-      line += words[i] + ' ';
+  return words.reduce((formattedStr, word) => {
+    if ((line + word).length <= 80) {
+      line += word + ' ';
     } else {
-      // Otherwise, add the line to the formatted string and start a new line
       formattedStr += line + '\n';
-      line = words[i] + ' ';
+      line = word + ' ';
     }
+    return formattedStr;
+  }, '') + line;
+}
+
+function cleanMessage(msg) {
+  const patternsToRemove = [
+    /^Stack from /,
+    /^\* #\d+/,
+    /^\* __->__ #\d+/,
+  ];
+
+  for (const pattern of patternsToRemove) {
+    if (pattern.test(msg)) return null;
   }
-  // Add the last line to the formatted string
-  formattedStr += line;
-  return formattedStr;
+
+  return formatCommitMessage(msg);
 }
 
 function filterMsg(response) {
-  const {body, title} = response;
-
+  const { body, title } = response;
   const msgs = body.split('\n\n').flatMap(x => x.split('\r\n'));
 
-  const newMessage = [];
+  const newMessage = [title];
 
-  // Add title
-  msgs.unshift(title);
-
-  for (const msg of msgs) {
-    // remove "Stack from [ghstack] blurb"
-    if (msg.startsWith('Stack from ')) {
-      continue;
+  msgs.forEach(msg => {
+    const cleanedMsg = cleanMessage(msg);
+    if (cleanedMsg) {
+      newMessage.push(cleanedMsg);
     }
+  });
 
-    // remove "* #1234"
-    if (msg.startsWith('* #')) {
-      continue;
-    }
-
-    // remove "* __->__ #1234"
-    if (msg.startsWith('* __')) {
-      continue;
-    }
-
-    const formattedStr = formatCommitMessage(msg);
-    if (!formattedStr) {
-      continue;
-    }
-    newMessage.push(formattedStr);
-  }
-
-  const updatedMsg = newMessage.join('\n\n');
-  return updatedMsg;
+  return newMessage.join('\n\n');
 }
 
 function parsePullRequestNumber(text) {
-  if (!text) {
-    return null;
-  }
-  const ghstackUrlRegex =
-    /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)/;
-  const ghstackMatch = text.match(ghstackUrlRegex);
-  if (ghstackMatch) {
-    return ghstackMatch[1];
-  }
-  const firstLine = text.split('\n').filter(text => text.trim().length > 0)[0];
-  if (firstLine == null) {
-    return null;
-  }
-  const prNumberRegex = /\(#(\d{3,})\)\s*$/;
-  const prNumberMatch = firstLine.match(prNumberRegex);
-  if (prNumberMatch) {
-    return prNumberMatch[1];
-  }
-  return null;
+  if (!text) return null;
+
+  const prNumberRegex = /(?:https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)|\(#(\d+)\))/;
+  const match = text.match(prNumberRegex);
+  return match ? match[1] || match[2] : null;
+}
+
+async function fetchAndUpdateCommitMessage(pr) {
+  return fetchPullRequest(pr)
+    .then(response => {
+      if (!response.body) return null;
+      return filterMsg(response);
+    })
+    .catch(e => {
+      console.error("Error fetching pull request:", e);
+      return null;
+    });
 }
 
 async function main() {
@@ -126,22 +112,16 @@ async function main() {
   const pr = parsePullRequestNumber(data);
 
   if (pr) {
-    try {
-      const response = await fetchPullRequest(pr);
-      if (!response.body) {
-        console.log(data);
-        return;
-      }
-      const newMessage = filterMsg(response);
+    const newMessage = await fetchAndUpdateCommitMessage(pr);
+    if (newMessage) {
       console.log(newMessage);
-      return;
-    } catch (e) {
+    } else {
       console.log(data);
-      return;
     }
+  } else {
+    console.log("No pull request number found.");
+    console.log(data);
   }
-
-  console.log(data);
 }
 
 main();
