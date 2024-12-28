@@ -21,6 +21,7 @@ import {
   LOCAL_STORAGE_BROWSER_THEME,
   LOCAL_STORAGE_PARSE_HOOK_NAMES_KEY,
   LOCAL_STORAGE_TRACE_UPDATES_ENABLED_KEY,
+  LOCAL_STORAGE_SHOW_NAMES_WHEN_TRACING_KEY,
 } from 'react-devtools-shared/src/constants';
 import {
   COMFORTABLE_LINE_HEIGHT,
@@ -43,20 +44,8 @@ type Context = {
   // Specified as a separate prop so it can trigger a re-render of FixedSizeList.
   lineHeight: number,
 
-  appendComponentStack: boolean,
-  setAppendComponentStack: (value: boolean) => void,
-
-  breakOnConsoleErrors: boolean,
-  setBreakOnConsoleErrors: (value: boolean) => void,
-
   parseHookNames: boolean,
   setParseHookNames: (value: boolean) => void,
-
-  hideConsoleLogsInStrictMode: boolean,
-  setHideConsoleLogsInStrictMode: (value: boolean) => void,
-
-  showInlineWarningsAndErrors: boolean,
-  setShowInlineWarningsAndErrors: (value: boolean) => void,
 
   theme: Theme,
   setTheme(value: Theme): void,
@@ -65,6 +54,9 @@ type Context = {
 
   traceUpdatesEnabled: boolean,
   setTraceUpdatesEnabled: (value: boolean) => void,
+
+  showNamesWhenTracing: boolean,
+  setShowNamesWhenTracing: (showNames: boolean) => void,
 };
 
 const SettingsContext: ReactContext<Context> = createContext<Context>(
@@ -123,6 +115,11 @@ function SettingsContextController({
       LOCAL_STORAGE_TRACE_UPDATES_ENABLED_KEY,
       false,
     );
+  const [showNamesWhenTracing, setShowNamesWhenTracing] =
+    useLocalStorageWithLog<boolean>(
+      LOCAL_STORAGE_SHOW_NAMES_WHEN_TRACING_KEY,
+      true,
+    );
 
   const documentElements = useMemo<DocumentElements>(() => {
     const array: Array<HTMLElement> = [
@@ -176,7 +173,11 @@ function SettingsContextController({
     bridge.send('setTraceUpdatesEnabled', traceUpdatesEnabled);
   }, [bridge, traceUpdatesEnabled]);
 
-  const value = useMemo(
+  useEffect(() => {
+    bridge.send('setShowNamesWhenTracing', showNamesWhenTracing);
+  }, [bridge, showNamesWhenTracing]);
+
+  const value: Context = useMemo(
     () => ({
       displayDensity,
       lineHeight:
@@ -191,6 +192,8 @@ function SettingsContextController({
       theme,
       browserTheme,
       traceUpdatesEnabled,
+      showNamesWhenTracing,
+      setShowNamesWhenTracing,
     }),
     [
       displayDensity,
@@ -202,6 +205,7 @@ function SettingsContextController({
       theme,
       browserTheme,
       traceUpdatesEnabled,
+      showNamesWhenTracing,
     ],
   );
 

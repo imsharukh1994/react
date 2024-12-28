@@ -25,7 +25,6 @@ import {
   eachPatternOperand,
 } from '../HIR/visitors';
 import DisjointSet from '../Utils/DisjointSet';
-import {logHIRFunction} from '../Utils/logger';
 import {assertExhaustive} from '../Utils/utils';
 
 /*
@@ -156,7 +155,11 @@ export function inferReactiveScopeVariables(fn: HIRFunction): void {
       scope.range.end > maxInstruction + 1
     ) {
       // Make it easier to debug why the error occurred
-      logHIRFunction('InferReactiveScopeVariables (invalid scope)', fn);
+      fn.env.logger?.debugLogIRs?.({
+        kind: 'hir',
+        name: 'InferReactiveScopeVariables (invalid scope)',
+        value: fn,
+      });
       CompilerError.invariant(false, {
         reason: `Invalid mutable range for scope`,
         loc: GeneratedSource,
@@ -281,22 +284,25 @@ export function findDisjointMutableValues(
      */
     for (const phi of block.phis) {
       if (
-        phi.id.mutableRange.start + 1 !== phi.id.mutableRange.end &&
-        phi.id.mutableRange.end >
+        phi.place.identifier.mutableRange.start + 1 !==
+          phi.place.identifier.mutableRange.end &&
+        phi.place.identifier.mutableRange.end >
           (block.instructions.at(0)?.id ?? block.terminal.id)
       ) {
-        const operands = [phi.id];
-        const declaration = declarations.get(phi.id.declarationId);
+        const operands = [phi.place.identifier];
+        const declaration = declarations.get(
+          phi.place.identifier.declarationId,
+        );
         if (declaration !== undefined) {
           operands.push(declaration);
         }
         for (const [_, phiId] of phi.operands) {
-          operands.push(phiId);
+          operands.push(phiId.identifier);
         }
         scopeIdentifiers.union(operands);
       } else if (fn.env.config.enableForest) {
         for (const [, phiId] of phi.operands) {
-          scopeIdentifiers.union([phi.id, phiId]);
+          scopeIdentifiers.union([phi.place.identifier, phiId.identifier]);
         }
       }
     }

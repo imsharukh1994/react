@@ -200,6 +200,10 @@ describe('ReactSiblingPrerendering', () => {
       await waitForPaint(['A']);
       expect(root).toMatchRenderedOutput('A');
 
+      if (gate(flags => flags.enableYieldingBeforePassive)) {
+        // Passive effects.
+        await waitForPaint([]);
+      }
       // The second render is a prerender of the hidden content.
       await waitForPaint([
         'Suspend! [B]',
@@ -237,6 +241,10 @@ describe('ReactSiblingPrerendering', () => {
       // Immediately after the fallback commits, retry the boundary again. This
       // time we include B, since we're not blocking the fallback from showing.
       if (gate('enableSiblingPrerendering')) {
+        if (gate(flags => flags.enableYieldingBeforePassive)) {
+          // Passive effects.
+          await waitForPaint([]);
+        }
         await waitForPaint(['Suspend! [A]', 'Suspend! [B]']);
       }
     });
@@ -349,6 +357,7 @@ describe('ReactSiblingPrerendering', () => {
             <div>
               <Suspense fallback={<Text text="Loading inner..." />}>
                 <AsyncText text="B" />
+                <AsyncText text="C" />
               </Suspense>
             </div>
           </Suspense>
@@ -370,10 +379,17 @@ describe('ReactSiblingPrerendering', () => {
       // is throttled because it's been less than a Just Noticeable Difference
       // since the outer fallback was committed.
       //
-      // In the meantime, we could choose to start prerendering B, but instead
+      // In the meantime, we could choose to start prerendering C, but instead
       // we wait for a JND to elapse and the commit to finish — it's not
       // worth discarding the work we've already done.
-      await waitForAll(['A', 'Suspend! [B]', 'Loading inner...']);
+      await waitForAll([
+        'A',
+        'Suspend! [B]',
+
+        // C is skipped because we're no longer in prerendering mode; there's
+        // a new fallback we can show.
+        'Loading inner...',
+      ]);
       expect(root).toMatchRenderedOutput(<div>Loading outer...</div>);
 
       // Fire the timer to commit the outer fallback.
@@ -385,8 +401,10 @@ describe('ReactSiblingPrerendering', () => {
         </div>,
       );
     });
-    // Once the outer fallback is committed, we can start prerendering B.
-    assertLog(gate('enableSiblingPrerendering') ? ['Suspend! [B]'] : []);
+    // Once the inner fallback is committed, we can start prerendering C.
+    assertLog(
+      gate('enableSiblingPrerendering') ? ['Suspend! [B]', 'Suspend! [C]'] : [],
+    );
   });
 
   it(
@@ -442,6 +460,10 @@ describe('ReactSiblingPrerendering', () => {
           </>,
         );
 
+        if (gate(flags => flags.enableYieldingBeforePassive)) {
+          // Passive effects.
+          await waitForPaint([]);
+        }
         // Immediately after the fallback commits, retry the boundary again.
         // Because the promise for A resolved, this is a normal render, _not_
         // a prerender. So when we proceed to B, and B suspends, we unwind again
@@ -461,6 +483,10 @@ describe('ReactSiblingPrerendering', () => {
           </>,
         );
 
+        if (gate(flags => flags.enableYieldingBeforePassive)) {
+          // Passive effects.
+          await waitForPaint([]);
+        }
         // Now we can proceed to prerendering C.
         if (gate('enableSiblingPrerendering')) {
           await waitForPaint(['Suspend! [B]', 'Suspend! [C]']);
@@ -469,4 +495,75 @@ describe('ReactSiblingPrerendering', () => {
       assertLog([]);
     },
   );
+
+  it(
+    'when a synchronous update suspends outside a boundary, the resulting' +
+      'prerender is concurrent',
+    async () => {
+      function App() {
+        return (
+          <>
+            <Text text="A" />
+            <Text text="B" />
+            <AsyncText text="Async" />
+            <Text text="C" />
+            <Text text="D" />
+          </>
+        );
+      }
+
+      const root = ReactNoop.createRoot();
+      // Mount the root synchronously
+      ReactNoop.flushSync(() => root.render(<App />));
+
+      // Synchronously render everything until we suspend in the shell
+      assertLog(['A', 'B', 'Suspend! [Async]']);
+
+      if (gate('enableSiblingPrerendering')) {
+        // The rest of the siblings begin to prerender concurrently. Notice
+        // that we don't unwind here; we pick up where we left off above.
+        await waitFor(['C']);
+        await waitFor(['D']);
+      }
+
+      assertLog([]);
+      expect(root).toMatchRenderedOutput(null);
+
+      await resolveText('Async');
+      assertLog(['A', 'B', 'Async', 'C', 'D']);
+      expect(root).toMatchRenderedOutput('ABAsyncCD');
+    },
+  );
+
+  it('restart a suspended sync render if something suspends while prerendering the siblings', async () => {
+    function App() {
+      return (
+        <>
+          <Text text="A" />
+          <Text text="B" />
+          <AsyncText text="Async" />
+          <Text text="C" />
+          <Text text="D" />
+        </>
+      );
+    }
+
+    const root = ReactNoop.createRoot();
+    // Mount the root synchronously
+    ReactNoop.flushSync(() => root.render(<App />));
+
+    // Synchronously render everything until we suspend in the shell
+    assertLog(['A', 'B', 'Suspend! [Async]']);
+
+    if (gate('enableSiblingPrerendering')) {
+      // The rest of the siblings begin to prerender concurrently
+      await waitFor(['C']);
+    }
+
+    // While we're prerendering, Async resolves. We should unwind and
+    // start over, rather than continue prerendering D.
+    await resolveText('Async');
+    assertLog(['A', 'B', 'Async', 'C', 'D']);
+    expect(root).toMatchRenderedOutput('ABAsyncCD');
+  });
 });

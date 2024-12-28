@@ -163,13 +163,13 @@ export function printInstruction(instr: ReactiveInstruction): string {
 
 export function printPhi(phi: Phi): string {
   const items = [];
-  items.push(printIdentifier(phi.id));
-  items.push(printMutableRange(phi.id));
-  items.push(printType(phi.id.type));
+  items.push(printPlace(phi.place));
+  items.push(printMutableRange(phi.place.identifier));
+  items.push(printType(phi.place.identifier.type));
   items.push(': phi(');
   const phis = [];
-  for (const [blockId, id] of phi.operands) {
-    phis.push(`bb${blockId}: ${printIdentifier(id)}`);
+  for (const [blockId, place] of phi.operands) {
+    phis.push(`bb${blockId}: ${printPlace(place)}`);
   }
 
   items.push(phis.join(', '));
@@ -894,6 +894,14 @@ export function printSourceLocation(loc: SourceLocation): string {
     return 'generated';
   } else {
     return `${loc.start.line}:${loc.start.column}:${loc.end.line}:${loc.end.column}`;
+  }
+}
+
+export function printSourceLocationLine(loc: SourceLocation): string {
+  if (typeof loc === 'symbol') {
+    return 'generated';
+  } else {
+    return `${loc.start.line}:${loc.end.line}`;
   }
 }
 

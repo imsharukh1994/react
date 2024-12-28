@@ -367,6 +367,7 @@ export type BasicBlock = {
   preds: Set<BlockId>;
   phis: Set<Phi>;
 };
+export type TBasicBlock<T extends Terminal> = BasicBlock & {terminal: T};
 
 /*
  * Terminal nodes generally represent statements that affect control flow, such as
@@ -760,8 +761,8 @@ function _staticInvariantInstructionValueHasLocation(
 
 export type Phi = {
   kind: 'Phi';
-  id: Identifier;
-  operands: Map<BlockId, Identifier>;
+  place: Place;
+  operands: Map<BlockId, Place>;
 };
 
 /**
@@ -839,6 +840,11 @@ export type LoadLocal = {
   place: Place;
   loc: SourceLocation;
 };
+export type LoadContext = {
+  kind: 'LoadContext';
+  place: Place;
+  loc: SourceLocation;
+};
 
 /*
  * The value of a given instruction. Note that values are not recursive: complex
@@ -851,11 +857,7 @@ export type LoadLocal = {
 
 export type InstructionValue =
   | LoadLocal
-  | {
-      kind: 'LoadContext';
-      place: Place;
-      loc: SourceLocation;
-    }
+  | LoadContext
   | {
       kind: 'DeclareLocal';
       lvalue: LValue;
@@ -874,13 +876,7 @@ export type InstructionValue =
       };
       loc: SourceLocation;
     }
-  | {
-      kind: 'StoreLocal';
-      lvalue: LValue;
-      value: Place;
-      type: t.FlowType | t.TSType | null;
-      loc: SourceLocation;
-    }
+  | StoreLocal
   | {
       kind: 'StoreContext';
       lvalue: {
@@ -925,15 +921,7 @@ export type InstructionValue =
       type: Type;
       loc: SourceLocation;
     }
-  | {
-      kind: 'JsxExpression';
-      tag: Place | BuiltinTag;
-      props: Array<JsxAttribute>;
-      children: Array<Place> | null; // null === no children
-      loc: SourceLocation;
-      openingLoc: SourceLocation;
-      closingLoc: SourceLocation;
-    }
+  | JsxExpression
   | {
       kind: 'ObjectExpression';
       properties: Array<ObjectProperty | SpreadPattern>;
@@ -1079,6 +1067,16 @@ export type InstructionValue =
       loc: SourceLocation;
     };
 
+export type JsxExpression = {
+  kind: 'JsxExpression';
+  tag: Place | BuiltinTag;
+  props: Array<JsxAttribute>;
+  children: Array<Place> | null; // null === no children
+  loc: SourceLocation;
+  openingLoc: SourceLocation;
+  closingLoc: SourceLocation;
+};
+
 export type JsxAttribute =
   | {kind: 'JsxSpreadAttribute'; argument: Place}
   | {kind: 'JsxAttribute'; name: string; place: Place};
@@ -1123,6 +1121,13 @@ export type Primitive = {
 
 export type JSXText = {kind: 'JSXText'; value: string; loc: SourceLocation};
 
+export type StoreLocal = {
+  kind: 'StoreLocal';
+  lvalue: LValue;
+  value: Place;
+  type: t.FlowType | t.TSType | null;
+  loc: SourceLocation;
+};
 export type PropertyLoad = {
   kind: 'PropertyLoad';
   object: Place;
@@ -1236,6 +1241,17 @@ export function makeTemporaryIdentifier(
     scope: null,
     type: makeType(),
     loc,
+  };
+}
+
+export function forkTemporaryIdentifier(
+  id: IdentifierId,
+  source: Identifier,
+): Identifier {
+  return {
+    ...source,
+    mutableRange: {start: makeInstructionId(0), end: makeInstructionId(0)},
+    id,
   };
 }
 
@@ -1496,7 +1512,8 @@ export type ReactiveScopeDeclaration = {
   scope: ReactiveScope; // the scope in which the variable was originally declared
 };
 
-export type DependencyPath = Array<{property: string; optional: boolean}>;
+export type DependencyPathEntry = {property: string; optional: boolean};
+export type DependencyPath = Array<DependencyPathEntry>;
 export type ReactiveScopeDependency = {
   identifier: Identifier;
   path: DependencyPath;
@@ -1626,6 +1643,10 @@ export function isPrimitiveType(id: Identifier): boolean {
 
 export function isArrayType(id: Identifier): boolean {
   return id.type.kind === 'Object' && id.type.shapeId === 'BuiltInArray';
+}
+
+export function isPropsType(id: Identifier): boolean {
+  return id.type.kind === 'Object' && id.type.shapeId === 'BuiltInProps';
 }
 
 export function isRefValueType(id: Identifier): boolean {

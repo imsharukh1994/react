@@ -7,6 +7,10 @@ on:
     paths-ignore:
       - compiler/**
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 env:
   TZ: /usr/share/zoneinfo/America/Los_Angeles
   # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#cache-segment-restore-timeout
@@ -21,6 +25,8 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.result }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/github-script@v7
         id: set-matrix
         with:
@@ -38,6 +44,8 @@ jobs:
         flow_inline_config_shortname: ${{ fromJSON(needs.discover_flow_inline_configs.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -48,7 +56,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
+          key: runtime-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - run: node ./scripts/tasks/flow-ci ${{ matrix.flow_inline_config_shortname }}
 
@@ -58,6 +68,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -68,7 +80,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
+          key: runtime-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - run: |
           yarn generate-inline-fizz-runtime
@@ -80,6 +94,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -90,7 +106,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
+          key: runtime-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - run: yarn flags
 
@@ -129,6 +147,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -139,7 +159,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
+          key: runtime-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - run: yarn test ${{ matrix.params }} --ci --shard=${{ matrix.shard }}
 
@@ -154,6 +176,8 @@ jobs:
         release_channel: [stable, experimental]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -168,7 +192,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
+          key: runtime-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - run: yarn build --index=${{ matrix.worker_id }} --total=20 --r=${{ matrix.release_channel }} --ci
         env:
@@ -228,6 +254,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -238,7 +266,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
+          key: runtime-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - name: Restore archived build
         uses: actions/download-artifact@v4
@@ -256,6 +286,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -266,7 +298,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
+          key: runtime-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - name: Restore archived build
         uses: actions/download-artifact@v4
@@ -299,6 +333,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -309,7 +345,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
+          key: runtime-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - name: Restore archived build
         uses: actions/download-artifact@v4
@@ -330,6 +368,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -340,7 +380,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
+          key: runtime-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - name: Restore archived build
         uses: actions/download-artifact@v4
@@ -358,6 +400,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -368,7 +412,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: v2-yarn_cache_fixtures_dom-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          key: fixtures_dom-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - run: yarn install --frozen-lockfile --cache-folder ~/.cache/yarn
         working-directory: fixtures/dom
@@ -395,6 +441,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -408,7 +456,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: v2-yarn_cache_fixtures_flight-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          key: fixtures_flight-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - name: Restore archived build
         uses: actions/download-artifact@v4
@@ -454,6 +504,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -464,7 +516,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
+          key: runtime-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - name: Restore archived build
         uses: actions/download-artifact@v4
@@ -500,6 +554,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -510,7 +566,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
+          key: runtime-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - name: Restore archived build
         uses: actions/download-artifact@v4
@@ -532,6 +590,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -543,6 +603,8 @@ jobs:
         with:
           path: "**/node_modules"
           key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock', 'scripts/release/yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - run: yarn install --frozen-lockfile
         working-directory: scripts/release
@@ -571,6 +633,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -581,7 +645,9 @@ jobs:
         id: node_modules
         with:
           path: "**/node_modules"
-          key: ${{ runner.arch }}-${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
+          key: runtime-node_modules-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - name: Ensure clean build directory
+        run: rm -rf build
       - run: yarn install --frozen-lockfile
       - name: Restore archived build for PR
         uses: actions/download-artifact@v4

@@ -37,11 +37,11 @@ import {
   enableScopeAPI,
   enablePersistedModeClonedFlag,
   enableProfilerTimer,
-  enableCache,
   enableTransitionTracing,
   enableRenderableContext,
   passChildrenWhenCloningPersistedNodes,
   disableLegacyMode,
+  enableSiblingPrerendering,
 } from 'shared/ReactFeatureFlags';
 
 import {now} from './Scheduler';
@@ -622,7 +622,9 @@ function scheduleRetryEffect(
 
     // Track the lanes that have been scheduled for an immediate retry so that
     // we can mark them as suspended upon committing the root.
-    markSpawnedRetryLane(retryLane);
+    if (enableSiblingPrerendering) {
+      markSpawnedRetryLane(retryLane);
+    }
   }
 }
 
@@ -924,9 +926,13 @@ function completeDehydratedSuspenseBoundary(
     // Successfully completed this tree. If this was a forced client render,
     // there may have been recoverable errors during first hydration
     // attempt. If so, add them to a queue so we can log them in the
-    // commit phase.
-    upgradeHydrationErrorsToRecoverable();
-
+    // commit phase. We also add them to prev state so we can get to them
+    // from the Suspense Boundary.
+    const hydrationErrors = upgradeHydrationErrorsToRecoverable();
+    if (current !== null && current.memoizedState !== null) {
+      const prevState: SuspenseState = current.memoizedState;
+      prevState.hydrationErrors = hydrationErrors;
+    }
     // Fall through to normal Suspense path
     return true;
   }
@@ -982,18 +988,16 @@ function completeWork(
         }
       }
 
-      if (enableCache) {
-        let previousCache: Cache | null = null;
-        if (current !== null) {
-          previousCache = current.memoizedState.cache;
-        }
-        const cache: Cache = workInProgress.memoizedState.cache;
-        if (cache !== previousCache) {
-          // Run passive effects to retain/release the cache.
-          workInProgress.flags |= Passive;
-        }
-        popCacheProvider(workInProgress, cache);
+      let previousCache: Cache | null = null;
+      if (current !== null) {
+        previousCache = current.memoizedState.cache;
       }
+      const cache: Cache = workInProgress.memoizedState.cache;
+      if (cache !== previousCache) {
+        // Run passive effects to retain/release the cache.
+        workInProgress.flags |= Passive;
+      }
+      popCacheProvider(workInProgress, cache);
 
       if (enableTransitionTracing) {
         popRootMarkerInstance(workInProgress);
@@ -1381,7 +1385,7 @@ function completeWork(
         current !== null &&
         (current.memoizedState: null | SuspenseState) !== null;
 
-      if (enableCache && nextDidTimeout) {
+      if (nextDidTimeout) {
         const offscreenFiber: Fiber = (workInProgress.child: any);
         let previousCache: Cache | null = null;
         if (
@@ -1780,26 +1784,24 @@ function completeWork(
         scheduleRetryEffect(workInProgress, retryQueue);
       }
 
-      if (enableCache) {
-        let previousCache: Cache | null = null;
-        if (
-          current !== null &&
-          current.memoizedState !== null &&
-          current.memoizedState.cachePool !== null
-        ) {
-          previousCache = current.memoizedState.cachePool.pool;
-        }
-        let cache: Cache | null = null;
-        if (
-          workInProgress.memoizedState !== null &&
-          workInProgress.memoizedState.cachePool !== null
-        ) {
-          cache = workInProgress.memoizedState.cachePool.pool;
-        }
-        if (cache !== previousCache) {
-          // Run passive effects to retain/release the cache.
-          workInProgress.flags |= Passive;
-        }
+      let previousCache: Cache | null = null;
+      if (
+        current !== null &&
+        current.memoizedState !== null &&
+        current.memoizedState.cachePool !== null
+      ) {
+        previousCache = current.memoizedState.cachePool.pool;
+      }
+      let cache: Cache | null = null;
+      if (
+        workInProgress.memoizedState !== null &&
+        workInProgress.memoizedState.cachePool !== null
+      ) {
+        cache = workInProgress.memoizedState.cachePool.pool;
+      }
+      if (cache !== previousCache) {
+        // Run passive effects to retain/release the cache.
+        workInProgress.flags |= Passive;
       }
 
       popTransition(workInProgress, current);
@@ -1807,19 +1809,17 @@ function completeWork(
       return null;
     }
     case CacheComponent: {
-      if (enableCache) {
-        let previousCache: Cache | null = null;
-        if (current !== null) {
-          previousCache = current.memoizedState.cache;
-        }
-        const cache: Cache = workInProgress.memoizedState.cache;
-        if (cache !== previousCache) {
-          // Run passive effects to retain/release the cache.
-          workInProgress.flags |= Passive;
-        }
-        popCacheProvider(workInProgress, cache);
-        bubbleProperties(workInProgress);
+      let previousCache: Cache | null = null;
+      if (current !== null) {
+        previousCache = current.memoizedState.cache;
       }
+      const cache: Cache = workInProgress.memoizedState.cache;
+      if (cache !== previousCache) {
+        // Run passive effects to retain/release the cache.
+        workInProgress.flags |= Passive;
+      }
+      popCacheProvider(workInProgress, cache);
+      bubbleProperties(workInProgress);
       return null;
     }
     case TracingMarkerComponent: {

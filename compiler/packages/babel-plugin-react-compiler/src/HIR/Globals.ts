@@ -9,6 +9,7 @@ import {Effect, ValueKind, ValueReason} from './HIR';
 import {
   BUILTIN_SHAPES,
   BuiltInArrayId,
+  BuiltInFireId,
   BuiltInMixedReadonlyId,
   BuiltInUseActionStateId,
   BuiltInUseContextHookId,
@@ -25,7 +26,7 @@ import {
   addHook,
   addObject,
 } from './ObjectShape';
-import {BuiltInType, PolyType} from './Types';
+import {BuiltInType, ObjectType, PolyType} from './Types';
 import {TypeConfig} from './TypeSchema';
 import {assertExhaustive} from '../Utils/utils';
 import {isHookName} from './Environment';
@@ -87,6 +88,21 @@ const UNTYPED_GLOBALS: Set<string> = new Set([
 ]);
 
 const TYPED_GLOBALS: Array<[string, BuiltInType]> = [
+  [
+    'Object',
+    addObject(DEFAULT_SHAPES, 'Object', [
+      [
+        'keys',
+        addFunction(DEFAULT_SHAPES, [], {
+          positionalParams: [Effect.Read],
+          restParam: null,
+          returnType: {kind: 'Object', shapeId: BuiltInArrayId},
+          calleeEffect: Effect.Read,
+          returnValueKind: ValueKind.Mutable,
+        }),
+      ],
+    ]),
+  ],
   [
     'Array',
     addObject(DEFAULT_SHAPES, 'Array', [
@@ -468,6 +484,21 @@ const REACT_APIS: Array<[string, BuiltInType]> = [
       BuiltInUseOperatorId,
     ),
   ],
+  [
+    'fire',
+    addFunction(
+      DEFAULT_SHAPES,
+      [],
+      {
+        positionalParams: [],
+        restParam: null,
+        returnType: {kind: 'Primitive'},
+        calleeEffect: Effect.Read,
+        returnValueKind: ValueKind.Frozen,
+      },
+      BuiltInFireId,
+    ),
+  ],
 ];
 
 TYPED_GLOBALS.push(
@@ -652,10 +683,7 @@ export function installTypeConfig(
   }
 }
 
-export function installReAnimatedTypes(
-  globals: GlobalRegistry,
-  registry: ShapeRegistry,
-): void {
+export function getReanimatedModuleType(registry: ShapeRegistry): ObjectType {
   // hooks that freeze args and return frozen value
   const frozenHooks = [
     'useFrameCallback',
@@ -665,8 +693,9 @@ export function installReAnimatedTypes(
     'useAnimatedReaction',
     'useWorkletCallback',
   ];
+  const reanimatedType: Array<[string, BuiltInType]> = [];
   for (const hook of frozenHooks) {
-    globals.set(
+    reanimatedType.push([
       hook,
       addHook(registry, {
         positionalParams: [],
@@ -677,7 +706,7 @@ export function installReAnimatedTypes(
         calleeEffect: Effect.Read,
         hookKind: 'Custom',
       }),
-    );
+    ]);
   }
 
   /**
@@ -686,7 +715,7 @@ export function installReAnimatedTypes(
    */
   const mutableHooks = ['useSharedValue', 'useDerivedValue'];
   for (const hook of mutableHooks) {
-    globals.set(
+    reanimatedType.push([
       hook,
       addHook(registry, {
         positionalParams: [],
@@ -697,7 +726,7 @@ export function installReAnimatedTypes(
         calleeEffect: Effect.Read,
         hookKind: 'Custom',
       }),
-    );
+    ]);
   }
 
   // functions that return mutable value
@@ -711,7 +740,7 @@ export function installReAnimatedTypes(
     'executeOnUIRuntimeSync',
   ];
   for (const fn of funcs) {
-    globals.set(
+    reanimatedType.push([
       fn,
       addFunction(registry, [], {
         positionalParams: [],
@@ -721,6 +750,8 @@ export function installReAnimatedTypes(
         returnValueKind: ValueKind.Mutable,
         noAlias: true,
       }),
-    );
+    ]);
   }
+
+  return addObject(registry, null, reanimatedType);
 }
